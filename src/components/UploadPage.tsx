@@ -16,6 +16,7 @@ import { addUpload, getUploadedDocs, saveDocs, UploadedDocument } from '../lib/u
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Badge } from './ui/badge';
+import { LiveAnalysisTerminal, TerminalLog } from './LiveAnalysisTerminal';
 
 interface UploadPageProps {
   onNavigate: (page: string) => void;
@@ -29,6 +30,14 @@ export function UploadPage({ onNavigate, userName }: UploadPageProps) {
   const [category, setCategory] = useState('SaaS');
   const [uploading, setUploading] = useState(false);
   const [recentUploads, setRecentUploads] = useState<UploadedDocument[]>([]);
+
+  // Real-time Streaming State
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [terminalProgress, setTerminalProgress] = useState(0);
+  const [currentStage, setCurrentStage] = useState(1);
+  const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([]);
+  const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [currentFileName, setCurrentFileName] = useState('');
 
   // Load recent uploads
   useEffect(() => {
@@ -79,50 +88,111 @@ export function UploadPage({ onNavigate, userName }: UploadPageProps) {
     }
 
     setUploading(true);
+    setIsStreaming(true);
+    setTerminalError(null);
+    setTerminalLogs([]);
+
+    const addLog = (msg: string, stage: number, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
+      const now = new Date().toLocaleTimeString();
+      setTerminalLogs(prev => [...prev, { timestamp: now, stage, message: msg, type }]);
+    };
 
     try {
       for (const file of files) {
+        setCurrentFileName(file.name);
+        setTerminalProgress(10);
+        setCurrentStage(1);
+        addLog(`Initiating streaming analysis for ${file.name}...`, 1, 'info');
+
         const formData = new FormData();
         formData.append('file', file);
         formData.append('category', uploadType === 'pitch' ? 'Pitch Deck' : uploadType === 'call' ? 'Founder Call' : category);
 
-        const response = await fetch('/api/analyze', {
+        const response = await fetch('/api/analyze-stream', {
           method: 'POST',
           body: formData,
         });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || `Server responded with status ${response.status}`);
+        if (!response.ok || !response.body) {
+          throw new Error(`Server connection failed with status ${response.status}`);
         }
 
-        const analysedDoc = await response.json();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
 
-        // Save analysed document to localStorage
-        const docs = getUploadedDocs();
-        docs.unshift(analysedDoc);
-        saveDocs(docs);
-        
-        // Trigger storage event so that other components/pages update
-        window.dispatchEvent(new Event('storage'));
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || ''; // Keep incomplete trailing line in buffer
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('data: ')) {
+              const rawJson = trimmed.replace('data: ', '');
+              try {
+                const event = JSON.parse(rawJson);
+
+                if (event.error) {
+                  setTerminalError(event.error);
+                  addLog(`ERROR: ${event.error}`, 0, 'error');
+                  toast.error('Analysis Failed', { description: event.error });
+                  setUploading(false);
+                  return;
+                }
+
+                if (event.stage !== undefined) {
+                  setCurrentStage(event.stage);
+                }
+                if (event.progress !== undefined) {
+                  setTerminalProgress(event.progress);
+                }
+
+                if (event.message) {
+                  const logType = event.step === 'complete' ? 'success' : 'info';
+                  addLog(event.message, event.stage || 1, logType);
+                }
+
+                if (event.step === 'complete' && event.result) {
+                  const docs = getUploadedDocs();
+                  docs.unshift(event.result);
+                  saveDocs(docs);
+                  window.dispatchEvent(new Event('storage'));
+                }
+              } catch (parseErr) {
+                console.warn('SSE Parse warning:', parseErr);
+              }
+            }
+          }
+        }
       }
 
+      setTerminalProgress(100);
+      setCurrentStage(4);
+      addLog('Pipeline Execution Finalized! Saving results and navigating...', 4, 'success');
+
       toast.success(`${files.length} file(s) analyzed successfully!`, {
-        description: 'AI analysis has completed. View results on your dashboard.',
+        description: 'AI evaluation stream complete. Loading dashboard...',
       });
-      
+
       setFiles([]);
-      
+
       setTimeout(() => {
+        setIsStreaming(false);
+        setUploading(false);
         onNavigate('dashboard');
-      }, 1000);
+      }, 1500);
 
     } catch (err: any) {
-      console.error('Error during AI analysis:', err);
-      toast.error('AI Analysis Failed', {
-        description: err.message || 'An error occurred during text extraction or LLM processing.',
+      console.error('Error during SSE streaming analysis:', err);
+      setTerminalError(err.message || 'Streaming failed');
+      addLog(`FATAL ERROR: ${err.message}`, 0, 'error');
+      toast.error('AI Streaming Failed', {
+        description: err.message || 'Failed to complete SSE analysis pipeline.',
       });
-    } finally {
       setUploading(false);
     }
   };
@@ -324,11 +394,24 @@ export function UploadPage({ onNavigate, userName }: UploadPageProps) {
                 <Button
                   onClick={handleAnalyze}
                   disabled={uploading}
-                  className="w-full mt-6 bg-gradient-to-r from-[#171c92] to-[#13182a] hover:from-[#161b2c] hover:to-[#111932] text-white"
+                  className="w-full mt-6 bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white font-semibold shadow-lg shadow-purple-950/50"
                 >
-                  {uploading ? 'Uploading...' : 'Start AI Analysis'}
+                  {uploading ? 'Streaming AI Pipeline...' : 'Start AI Analysis'}
                 </Button>
               </Card>
+            )}
+
+            {/* LIVE SSE STREAMING TERMINAL CONSOLE */}
+            {isStreaming && (
+              <div className="mt-6">
+                <LiveAnalysisTerminal
+                  fileName={currentFileName || 'document.pdf'}
+                  progress={terminalProgress}
+                  currentStage={currentStage}
+                  logs={terminalLogs}
+                  error={terminalError}
+                />
+              </div>
             )}
           </div>
 

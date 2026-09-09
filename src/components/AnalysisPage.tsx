@@ -15,6 +15,7 @@ import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { getUploadById } from '../lib/uploads';
+import { ValuationSimulator } from './ValuationSimulator';
 import {
   RadarChart,
   PolarGrid,
@@ -290,13 +291,24 @@ export function AnalysisPage({ startupId, onNavigate, userName }: AnalysisPagePr
                   <FileText className="w-4 h-4 mr-2" />
                   Generate Full Report
                 </Button>
-                <Button className="w-full bg-white/5 hover:bg-white/10 text-white border border-white/10">
+                <Button 
+                  onClick={() => {
+                    const el = document.getElementById('valuation-simulator');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="w-full bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 border border-purple-500/30 transition-colors"
+                >
                   <BarChart3 className="w-4 h-4 mr-2" />
                   Run Scenario Analysis
                 </Button>
               </div>
             </Card>
           </div>
+        </div>
+
+        {/* Valuation & Runway Simulator Section */}
+        <div id="valuation-simulator" className="mt-8 pt-4">
+          <ValuationSimulator startupName={startup.name} initialKpis={startup.kpis} />
         </div>
       </div>
     </div>
