@@ -96,7 +96,7 @@ export default function App() {
         onLogout={handleLogout}
       />
       {renderPage()}
-      {isLoggedIn && <ChatbotWidget />}
+      {isLoggedIn && <ChatbotWidget selectedStartupId={selectedStartupId} />}
       <Toaster />
     </div>
   );

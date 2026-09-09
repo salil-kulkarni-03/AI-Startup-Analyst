@@ -364,6 +364,56 @@ ${extractedText}
   }
 });
 
+// Pitch Deck RAG Chatbot Route
+app.post('/api/chat-deck', async (req, res) => {
+  try {
+    const { question, startupContext, history = [] } = req.body;
+
+    if (!question || !question.trim()) {
+      return res.status(400).json({ error: 'Question is required' });
+    }
+
+    let systemContent = 'You are an expert AI Venture Capital Analyst assistant for Cereva AI. Answer user questions about startups professionally, concisely, and accurately.';
+
+    if (startupContext && startupContext.name) {
+      systemContent = `You are an expert AI Venture Capital Analyst assistant for Cereva AI.
+You are helping an investor analyze the startup pitch deck for "${startupContext.name}".
+
+Here is the exact pitch deck assessment context for ${startupContext.name}:
+- Startup Name: ${startupContext.name}
+- Category: ${startupContext.category || 'N/A'}
+- Category Scores: Team (${startupContext.scores?.team || 'N/A'}/100), Market (${startupContext.scores?.market || 'N/A'}/100), Product (${startupContext.scores?.product || 'N/A'}/100), Risk (${startupContext.scores?.risk || 'N/A'}/100)
+- Executive Summary: ${startupContext.summary || 'N/A'}
+- Key Red Flags: ${startupContext.redFlags ? startupContext.redFlags.join(' | ') : 'None listed'}
+- Key Growth Opportunities: ${startupContext.opportunities ? startupContext.opportunities.join(' | ') : 'None listed'}
+- Financial KPIs: Monthly Burn Rate (${startupContext.kpis?.burnRate || 'N/A'}), Cash Runway (${startupContext.kpis?.runway || 'N/A'}), CAC (${startupContext.kpis?.cac || 'N/A'}), LTV (${startupContext.kpis?.ltv || 'N/A'})
+- Founder Profile: Name (${startupContext.founderInfo?.name || 'N/A'}), Background (${startupContext.founderInfo?.experience || 'N/A'}), Education (${startupContext.founderInfo?.education || 'N/A'}), Network Score (${startupContext.founderInfo?.networkScore || 'N/A'}/100), Pitch Sentiment (${startupContext.founderInfo?.sentimentScore || 'N/A'}/100)
+
+Answer the investor's question accurately based on this deck data. Be concise, professional, and clear. Format key metrics in bold.`;
+    }
+
+    const messages = [
+      { role: 'system', content: systemContent },
+      ...(Array.isArray(history) ? history.slice(-6).map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content })) : []),
+      { role: 'user', content: question }
+    ];
+
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages,
+      temperature: 0.3,
+      max_tokens: 600,
+    });
+
+    const reply = completion.choices[0]?.message?.content || 'I could not generate an answer at this moment.';
+    res.json({ reply });
+
+  } catch (error) {
+    console.error('Error in chat-deck:', error);
+    res.status(500).json({ error: 'Failed to process chat query. ' + error.message });
+  }
+});
+
 // Serve static React files in production
 app.use(express.static(path.join(__dirname, 'build')));
 
