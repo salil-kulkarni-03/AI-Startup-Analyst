@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://cereva-backend.onrender.com/api/:path*"
+      "destination": "https://ai-startup-analyst-gcha.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",
