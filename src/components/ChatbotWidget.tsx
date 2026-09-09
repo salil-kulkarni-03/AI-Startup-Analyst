@@ -94,7 +94,10 @@ export function ChatbotWidget({ selectedStartupId }: ChatbotWidgetProps) {
     <>
       {/* Floating Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 w-96 max-w-[calc(100vw-2rem)] h-[520px] bg-[#0c1020] border border-purple-500/30 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden">
+        <div 
+          style={{ backgroundColor: '#070b18' }}
+          className="fixed bottom-24 right-6 w-96 max-w-[calc(100vw-2rem)] h-[520px] bg-[#070b18] border border-purple-500/40 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden text-white"
+        >
           {/* Header */}
           <div className="p-3.5 bg-gradient-to-r from-[#111732] to-[#181d3d] border-b border-white/10 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -150,7 +153,7 @@ export function ChatbotWidget({ selectedStartupId }: ChatbotWidgetProps) {
           </div>
 
           {/* Messages Container */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 font-sans text-sm">
+          <div style={{ backgroundColor: '#070b18' }} className="flex-1 overflow-y-auto p-4 space-y-3 font-sans text-sm bg-[#070b18]">
             {messages.map((msg, idx) => (
               <div
                 key={idx}

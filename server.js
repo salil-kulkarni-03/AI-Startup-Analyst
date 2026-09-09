@@ -21,6 +21,70 @@ if (!GROQ_API_KEY) {
 
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
+let cachedModels = [];
+
+// Dynamically fetch active, non-deprecated Groq models directly from Groq API
+async function getAvailableGroqModels() {
+  if (cachedModels.length > 0) return cachedModels;
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { 'Authorization': `Bearer ${GROQ_API_KEY}` }
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const chatModels = data.data
+        .map(m => m.id)
+        .filter(id => 
+          !id.includes('whisper') && 
+          !id.includes('vision') && 
+          !id.includes('guard') && 
+          !id.includes('canopylabs') && 
+          !id.includes('allam')
+        );
+      
+      // Sort to prioritize Llama and Qwen models
+      chatModels.sort((a, b) => {
+        const priority = (name) => name.includes('llama') ? 1 : name.includes('qwen') ? 2 : 3;
+        return priority(a) - priority(b);
+      });
+
+      if (chatModels.length > 0) {
+        console.log('Discovered active Groq LLM models:', chatModels);
+        cachedModels = chatModels;
+        return cachedModels;
+      }
+    }
+  } catch (err) {
+    console.warn('Could not auto-fetch Groq models:', err.message);
+  }
+  // Hardcoded fallback list if network query fails
+  cachedModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-8b-8192', 'llama3-70b-8192', 'gemma2-9b-it'];
+  return cachedModels;
+}
+
+// Helper to query Groq with dynamic active model loop
+async function createGroqCompletion(params) {
+  const models = await getAvailableGroqModels();
+  let lastErr = null;
+
+  for (const model of models) {
+    try {
+      console.log(`Querying Groq API with model: ${model}...`);
+      const result = await groq.chat.completions.create({
+        ...params,
+        model
+      });
+      console.log(`✅ Groq API Query Completed Successfully! (Model used: ${model})`);
+      return result;
+    } catch (err) {
+      console.warn(`Groq model '${model}' failed: ${err.message}. Trying next model...`);
+      lastErr = err;
+    }
+  }
+
+  throw lastErr;
+}
+
 // Multer memory storage configuration (keeps files in RAM, uses < 1MB per upload)
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -92,9 +156,8 @@ app.post('/api/analyze', upload.single('file'), async (req, res) => {
 
     console.log('Sending text to Groq API for analysis...');
 
-    // 2. Query Groq API with Llama 3.1
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+    // 2. Query Groq API with automatic model fallback
+    const completion = await createGroqCompletion({
       messages: [
         {
           role: 'system',
@@ -257,11 +320,10 @@ app.post('/api/analyze-stream', upload.single('file'), async (req, res) => {
       sendEvent({ stage: 1, step: 'extract', progress: 50, message: `Truncating deck text to 60,000 characters for token efficiency.` });
     }
 
-    sendEvent({ stage: 2, step: 'llm_init', progress: 55, message: 'Connecting to Groq Llama 3.1 8B Instant LLM engine...' });
+    sendEvent({ stage: 2, step: 'llm_init', progress: 55, message: 'Connecting to Groq High-Performance Inference Engine...' });
 
-    // 2. Query Groq API with Streaming enabled
-    const stream = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+    // 2. Query Groq API with Streaming enabled & fallback
+    const stream = await createGroqCompletion({
       messages: [
         {
           role: 'system',
@@ -398,8 +460,7 @@ Answer the investor's question accurately based on this deck data. Be concise, p
       { role: 'user', content: question }
     ];
 
-    const completion = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+    const completion = await createGroqCompletion({
       messages,
       temperature: 0.3,
       max_tokens: 600,
@@ -423,6 +484,12 @@ app.use((req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server is running on port ${PORT}`);
+  try {
+    const models = await getAvailableGroqModels();
+    console.log('Active Groq AI Models Loaded:', models.slice(0, 4));
+  } catch (e) {
+    console.log('Server started.');
+  }
 });
