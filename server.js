@@ -475,12 +475,23 @@ Answer the investor's question accurately based on this deck data. Be concise, p
   }
 });
 
-// Serve static React files in production
-app.use(express.static(path.join(__dirname, 'build')));
+const fs = require('fs');
 
-// Catch-all route to serve index.html for SPA client-side routing
+// Serve static React files in production if build directory exists
+const buildPath = path.join(__dirname, 'build');
+const indexPath = path.join(buildPath, 'index.html');
+
+if (fs.existsSync(buildPath)) {
+  app.use(express.static(buildPath));
+}
+
+// Fallback health check & SPA router
 app.use((req, res) => {
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.json({ message: 'Cereva AI Backend API Server is Live & Running!', status: 'online' });
+  }
 });
 
 // Start server
